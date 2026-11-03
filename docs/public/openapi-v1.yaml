@@ -72,9 +72,24 @@ paths:
     get:
       operationId: listEvents
       summary: List indexed events
+      description: >
+        Returns the most recent contract events captured by the indexer,
+        ordered newest-first. The indexer polls Soroban RPC getEvents every
+        10 seconds and retains up to 200 events in a bounded in-memory buffer.
+        A failed RPC cycle carries the previous event list forward unchanged.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of events to return (default 50, max 200).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
       responses:
         "200":
-          description: OK
+          description: Array of event objects, newest-first
           content:
             application/json:
               schema:
@@ -245,17 +260,13 @@ paths:
             type: string
       responses:
         "200":
-          description: OK
+          description: OK — every asset the address is allowlisted on, with real status and allowed derived from the on-chain record. Empty array when the address is unknown.
           content:
             application/json:
               schema:
-                type: object
-        "404":
-          description: Not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiErrorBody"
+                type: array
+                items:
+                  $ref: "#/components/schemas/AddressCompliance"
   /v1/compliance/{address}:
     get:
       operationId: getComplianceForAddress
@@ -268,19 +279,53 @@ paths:
             type: string
       responses:
         "200":
-          description: OK
+          description: OK — every asset the address is allowlisted on, with real status and allowed derived from the on-chain record. Empty array when the address is unknown.
           content:
             application/json:
               schema:
-                type: object
-        "404":
-          description: Not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiErrorBody"
+                type: array
+                items:
+                  $ref: "#/components/schemas/AddressCompliance"
 components:
   schemas:
+    AddressCompliance:
+      type: object
+      required: [address, asset_id, asset_name, symbol, balance, status, allowed]
+      properties:
+        address:
+          type: string
+          description: Stellar account address
+        asset_id:
+          type: integer
+          description: Registry asset ID
+        asset_name:
+          type: string
+          description: Asset name
+        symbol:
+          type: string
+          description: Ticker symbol
+        balance:
+          type: string
+          description: Balance in base units (i128 as string). "0" when the address is allowlisted but holds no tokens.
+        status:
+          type: string
+          description: >
+            KYC status from the on-chain record: "Approved", "Suspended",
+            "Rejected", "Pending". "none" if the address is not on the
+            allowlist (future; currently returns empty array instead).
+        allowed:
+          type: boolean
+          description: >
+            true when status is "Approved", the record has not expired at the
+            latest indexed ledger, and the jurisdiction is not blocked.
+        jurisdiction:
+          type: string
+          nullable: true
+          description: ISO jurisdiction code from the on-chain KYC record, or null if unknown.
+        expires_at:
+          type: integer
+          nullable: true
+          description: Ledger at which approval expires. null means no expiry or unknown address.
     ApiErrorBody:
       type: object
       required: [error, message]
